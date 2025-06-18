@@ -1,0 +1,72 @@
+﻿@page "/settings"
+
+@using CurrencyRates.Components.Services
+@inject CurrencyManagementService CurrencyManagementService
+@inject NotificationService NotificationService
+
+@rendermode InteractiveServer
+<PageTitle>Настройки</PageTitle>
+
+<h3>Настройки</h3>
+
+<RadzenText TextStyle="TextStyle.Subtitle1" TagName="TagName.H3">Токен для доступа к курсу валют</RadzenText>
+<RadzenTextBox @bind-Value="@tokenValue" Placeholder="Введите свой токен" Style="width: 300px" aria-label="TextBox with placeholder" />
+<RadzenButton Shade="Shade.Light" Click=@SetToken Text="Установить токен для API" ButtonStyle="ButtonStyle.Base" />
+
+<RadzenText TextStyle="TextStyle.Subtitle1" TagName="TagName.H3" Style="margin-top:50px">Частота обновления курсов валют (HH:mm)</RadzenText>
+<RadzenDatePicker @bind-Value=@CurrencyManagementService._updateRate Placeholder="HH:mm" ShowTime="true" TimeOnly="true" DateFormat="HH:mm" Name="DatePickerTimeOnly" />
+
+<RadzenNotification />
+@code {
+    private string tokenValue { get; set; } = string.Empty;
+
+    private void ShowNotify(NotificationMessage message)
+    {
+        NotificationService.Notify(message);
+        StateHasChanged();
+    }
+
+    protected override void OnInitialized()
+    {
+        tokenValue = CurrencyManagementService._token;
+    }
+
+    public async void SetToken()
+    {
+        if (tokenValue == null || tokenValue.Length == 0)
+        {
+            ShowNotify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Токен пуст",
+                    Detail = "API токен не должен быть пустым",
+                    Duration = 4000
+                });
+        }
+        else
+        {
+            try
+            {
+                await CurrencyManagementService.SetToken(tokenValue);
+                ShowNotify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Success,
+                        Summary = "Токен установлен",
+                        Detail = "API токен был успешно установлен",
+                        Duration = 4000
+                    });
+            }
+            catch (ArgumentException ex)
+            {
+                ShowNotify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Error,
+                        Summary = "Токен не установлен",
+                        Detail = ex.Message,
+                        Duration = 4000
+                    });
+                tokenValue = "";
+            }
+        }
+    }
+}

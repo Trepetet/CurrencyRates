@@ -1,0 +1,339 @@
+﻿@page "/"
+
+@using ClosedXML.Excel
+@using CurrencyRates.Components.Models
+@using CurrencyRates.Components.Services
+
+@inject CurrencyManagementService CurrencyManagementService
+@inject ContextMenuService ContextMenuService
+@inject NotificationService NotificationService
+@inject IJSRuntime JS
+
+@rendermode InteractiveServer
+
+<PageTitle>Курсы валют</PageTitle>
+<h3>Курсы валют</h3>
+
+<RadzenNotification />
+<RadzenContextMenu />
+
+@if (CurrencyManagementService.lastPriceUpdate != DateTime.MinValue)
+{
+    <p>Данные в таблице от @CurrencyManagementService.lastPriceUpdate (по UTC)</p>
+    <p>@CurrencyManagementService.lastPriceUpdate.AddHours(3) (по UTC+3)</p>
+}
+else
+{
+    <p>Данные в таблице еще не были обнавлены!</p>
+}
+
+<RadzenDataGrid @ref="grid" Data="@currencies" EmptyText="Нет данных для отображения"
+TItem="Currency" AllowSorting="true" CellContextMenu="@OnCellContextMenu">
+    <HeaderTemplate>
+        <RadzenTextBox @bind-Value="newCurrencyCode" Placeholder="Код валюты (USD, EUR)" Style="width: 200px" />
+        <RadzenButton Text="Добавить" Click="@AddCurrency" Icon="add_circle" />
+        <RadzenButton Text="Обновить" Click="@RefreshRates" Icon="refresh" />
+        <RadzenButton Text="Экспорт в Excel" Click="@DownloadExcel" Icon="file_download" ButtonStyle="ButtonStyle.Success" />
+    </HeaderTemplate>
+
+    <Columns>
+
+        <RadzenDataGridColumn Property="TranslateName" Title="Название на русском" Width="300px">
+            <Template Context="currency">
+                <div style="white-space: normal">@currency.TranslateName</div>
+            </Template>
+        </RadzenDataGridColumn>
+
+        <RadzenDataGridColumn Property="Name" Title="Название" Width="300px">
+            <Template Context="currency">
+                <div style="white-space: normal">@currency.Name</div>
+            </Template>
+        </RadzenDataGridColumn>
+
+        <RadzenDataGridColumn Property="PriceToUSD" Title="К USD" Width="120px" TextAlign="TextAlign.Right">
+            <Template Context="currency">
+                <div style="background-color: @(currency.isSupported ? "transparent" : "#ffdddd")">
+                    @currency.PriceToUSD.ToString("N4")
+                </div>
+            </Template>
+        </RadzenDataGridColumn>
+
+        <RadzenDataGridColumn Property="PriceSelectedCurrency" Title=@GetFormattedTitle() Width="120px" TextAlign="TextAlign.Right">
+            <Template Context="currency">
+                @if (baseCurrency != "")
+                {
+                    <div style="background-color: @(currency.isSupported ? "transparent" : "#ffdddd")">
+                        @currency.PriceSelectedCurrency.ToString("N4")
+                    </div>
+                }
+                else
+                {
+                    <div style="background-color: @(currency.isSupported ? "transparent" : "#ffdddd")">
+                        -
+                    </div>
+                }
+            </Template>
+        </RadzenDataGridColumn>
+
+        <RadzenDataGridColumn Property="TranslateName" Title="Название по ISO 4217" Width="130px">
+            <Template Context="currency">
+                <div style="white-space: normal">@currency.ISONameCode</div>
+            </Template>
+        </RadzenDataGridColumn>
+
+        <RadzenDataGridColumn Property="TranslateName" Title="Код по ISO 4217" Width="130px">
+            <Template Context="currency">
+                <div style="white-space: normal">@currency.ISONumCode</div>
+            </Template>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+
+@code {
+    private RadzenDataGrid<Currency> grid;
+    private List<Currency> currencies = new();
+    private Currency selectedCurrency;
+    private string baseCurrency = "";
+
+    private System.Timers.Timer refreshTimer;
+    private System.Timers.Timer fileUpdateTimer;
+
+    private string GetFormattedTitle() => baseCurrency!=""?$"К {baseCurrency}":"Валюта не выбрана";
+
+    private string newCurrencyCode = "";
+
+    protected override void OnInitialized()
+    {
+        SetupTimers();
+    }
+
+    private void SetupTimers()
+    {
+        refreshTimer = new System.Timers.Timer(CurrencyManagementService._updateRate.ToTimeSpan().TotalMicroseconds);
+        refreshTimer.Elapsed += async (_, _) => await InvokeAsync(RefreshRates);
+        refreshTimer.AutoReset = true;
+        refreshTimer.Start();
+
+        fileUpdateTimer = new System.Timers.Timer(TimeSpan.FromHours(24).TotalMilliseconds);
+        fileUpdateTimer.Elapsed += async (_, _) => await InvokeAsync(UpdateCurrencyFile);
+        fileUpdateTimer.AutoReset = true;
+        fileUpdateTimer.Start();
+    }
+
+    private void UpdateCurrencyFile()
+    {
+        CurrencyManagementService.UpdateCurrencyFile();
+        NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Info,
+                Summary = "Файл валют обновлен",
+                Detail = "Список доступных валют был обновлен",
+                Duration = 4000
+            });
+        StateHasChanged();
+    }
+
+    private async void AddCurrency()
+    {
+        Currency newCurrency = null;
+        try
+        {
+            newCurrency = CurrencyManagementService.GetCurriency(newCurrencyCode);
+        }
+        catch (HttpRequestException ex)
+        {
+            ShowNotify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Валюта не добавлена",
+                    Detail = $"При попытке добавить валюту произошла ошибка!",
+                    Duration = 4000
+                });
+            return;
+        }
+
+        if (newCurrency == null)
+        {
+            ShowNotify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Валюта не добавлена",
+                    Detail = $"Не удалось найти валюту с кодом " + newCurrencyCode,
+                    Duration = 4000
+                });
+            return;
+        }
+        else
+        {
+            try
+            {
+                await CurrencyManagementService.UpdatePriceOnCurreny(newCurrency, baseCurrency);
+            }
+            catch (InvalidOperationException ex)
+            {
+                ShowNotify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Error,
+                        Summary = "Токен не был установлен!",
+                        Detail = ex.Message,
+                        Duration = 4000
+                    });
+                return;
+            }
+            currencies.Add(newCurrency);
+            grid.Reload();
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshRates()
+    {
+        if (currencies.Count == 0)
+            return;
+        try
+        {
+            CurrencyManagementService.CheckingExistenceToken();
+        }
+        catch (InvalidOperationException ex)
+        {
+            ShowNotify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Токен не был установлен!",
+                    Detail = ex.Message,
+                    Duration = 4000
+                });
+            return;
+        }
+        currencies.ForEach(async currency =>
+        {
+            await CurrencyManagementService.UpdatePriceOnCurreny(currency, baseCurrency);
+        });
+        await Task.Delay(200);
+        await grid.Reload();
+        ShowNotify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Данные обновлены!",
+                Detail = $"Все данные по курсам валют были обновлены!",
+                Duration = 4000
+            });
+    }
+
+    private async void DownloadExcel()
+    {
+        try
+        {
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Курсы валют");
+
+            // Заголовки
+            worksheet.Cell(1, 1).Value = "Название";
+            worksheet.Cell(1, 2).Value = "Код";
+            worksheet.Cell(1, 3).Value = "Курс к USD";
+            if (baseCurrency!="")
+                worksheet.Cell(1, 4).Value = $"Курс к {baseCurrency}";
+
+            // Данные
+            for (var i = 0; i < currencies.Count; i++)
+            {
+                var currency = currencies[i];
+                worksheet.Cell(i + 2, 1).Value = currency.TranslateName;
+                worksheet.Cell(i + 2, 2).Value = currency.ISONameCode;
+                worksheet.Cell(i + 2, 3).Value = currency.PriceToUSD;
+
+                if (baseCurrency != "")
+                    worksheet.Cell(i + 2, 4).Value = currency.PriceSelectedCurrency;
+            }
+
+            // Форматирование
+            worksheet.Columns().AdjustToContents();
+            worksheet.Range("A1:E1").Style.Font.Bold = true;
+
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var fileBytes = stream.ToArray();
+
+            var fileName = $"Курсы_валют_{DateTime.Now:yyyy_MM_dd-HH_mm}.xlsx";
+            await DownloadFile(fileName, fileBytes);
+
+            NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Экспорт завершён",
+                    Detail = $"Файл {fileName} успешно скачан",
+                    Duration = 4000
+                });
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Ошибка экспорта",
+                    Detail = ex.Message,
+                    Duration = 4000
+                });
+        }
+        finally
+        {
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadFile(string filename, byte[] data)
+    {
+        var fileStream = new MemoryStream(data);
+        using var streamRef = new DotNetStreamReference(fileStream);
+
+        await JS.InvokeVoidAsync("downloadFileFromStream", filename, streamRef);
+    }
+
+    private void ShowNotify(NotificationMessage message)
+    {
+        NotificationService.Notify(message);
+        StateHasChanged();
+    }
+
+    private void OnCellContextMenu(DataGridCellMouseEventArgs<Currency> args)
+    {
+        selectedCurrency = args.Data;
+
+        ContextMenuService.Open(args, new List<ContextMenuItem> {
+            new() { Text = "Сделать базовой", Icon = "star", Value = "set_base" },
+            new() { Text = "Удалить", Icon = "delete", Value = "remove" }
+        }, OnMenuItemClick);
+        StateHasChanged();
+    }
+
+    private async void OnMenuItemClick(MenuItemEventArgs args)
+    {
+        switch (args.Value)
+        {
+            case "set_base":
+                baseCurrency = selectedCurrency.ISONameCode;
+                await RefreshRates();
+                ShowNotify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Info,
+                        Summary = "Базовая валюта изменена",
+                        Detail = $"Теперь курсы показаны относительно {baseCurrency}",
+                        Duration = 4000
+                    });
+                StateHasChanged();
+                break;
+
+            case "remove":
+                if (selectedCurrency.ISONameCode == baseCurrency)
+                {
+                    baseCurrency = "";
+                    if(currencies.Count>1)
+                        await RefreshRates();
+                }
+                currencies.Remove(selectedCurrency);
+                grid.Reload();
+                StateHasChanged();
+                break;
+        }
+    }
+}
