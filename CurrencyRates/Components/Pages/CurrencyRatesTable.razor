@@ -12,22 +12,23 @@
 @rendermode InteractiveServer
 
 <PageTitle>Курсы валют</PageTitle>
-<h3>Курсы валют</h3>
+
+<RadzenText TextStyle="TextStyle.H2">Курсы валют</RadzenText>
 
 <RadzenNotification />
 <RadzenContextMenu />
 
 @if (CurrencyManagementService.lastPriceUpdate != DateTime.MinValue)
 {
-    <p>Данные в таблице от @CurrencyManagementService.lastPriceUpdate (по UTC)</p>
-    <p>@CurrencyManagementService.lastPriceUpdate.AddHours(3) (по UTC+3)</p>
+    <RadzenText TextStyle="TextStyle.Subtitle1">Данные в таблице от @CurrencyManagementService.lastPriceUpdate (по UTC)</RadzenText>
+    <RadzenText TextStyle="TextStyle.Subtitle1">@CurrencyManagementService.lastPriceUpdate.AddHours(3) (по UTC+3)</RadzenText>
 }
 else
 {
-    <p>Данные в таблице еще не были обнавлены!</p>
+    <RadzenText TextStyle="TextStyle.Subtitle1">Данные в таблице еще не были обновлены!</RadzenText>
 }
 
-<RadzenDataGrid @ref="grid" Data="@currencies" EmptyText="Нет данных для отображения"
+<RadzenDataGrid @ref="grid" Data="@currencies"
 TItem="Currency" AllowSorting="true" CellContextMenu="@OnCellContextMenu">
     <HeaderTemplate>
         <RadzenTextBox @bind-Value="newCurrencyCode" Placeholder="Код валюты (USD, EUR)" Style="width: 200px" />
@@ -35,6 +36,10 @@ TItem="Currency" AllowSorting="true" CellContextMenu="@OnCellContextMenu">
         <RadzenButton Text="Обновить" Click="@RefreshRates" Icon="refresh" />
         <RadzenButton Text="Экспорт в Excel" Click="@DownloadExcel" Icon="file_download" ButtonStyle="ButtonStyle.Success" />
     </HeaderTemplate>
+
+    <EmptyTemplate>
+        <RadzenText TextStyle="TextStyle.Subtitle1">Нет данных для отображения</RadzenText>
+    </EmptyTemplate>
 
     <Columns>
 
@@ -123,14 +128,13 @@ TItem="Currency" AllowSorting="true" CellContextMenu="@OnCellContextMenu">
     private void UpdateCurrencyFile()
     {
         CurrencyManagementService.UpdateCurrencyFile();
-        NotificationService.Notify(new NotificationMessage
+        ShowNotify(new NotificationMessage
             {
                 Severity = NotificationSeverity.Info,
                 Summary = "Файл валют обновлен",
                 Detail = "Список доступных валют был обновлен",
                 Duration = 4000
             });
-        StateHasChanged();
     }
 
     private async void AddCurrency()
@@ -182,7 +186,6 @@ TItem="Currency" AllowSorting="true" CellContextMenu="@OnCellContextMenu">
             }
             currencies.Add(newCurrency);
             grid.Reload();
-            StateHasChanged();
         }
     }
 
@@ -275,10 +278,6 @@ TItem="Currency" AllowSorting="true" CellContextMenu="@OnCellContextMenu">
                     Duration = 4000
                 });
         }
-        finally
-        {
-            StateHasChanged();
-        }
     }
 
     private async Task DownloadFile(string filename, byte[] data)
@@ -292,7 +291,6 @@ TItem="Currency" AllowSorting="true" CellContextMenu="@OnCellContextMenu">
     private void ShowNotify(NotificationMessage message)
     {
         NotificationService.Notify(message);
-        StateHasChanged();
     }
 
     private void OnCellContextMenu(DataGridCellMouseEventArgs<Currency> args)
@@ -303,7 +301,6 @@ TItem="Currency" AllowSorting="true" CellContextMenu="@OnCellContextMenu">
             new() { Text = "Сделать базовой", Icon = "star", Value = "set_base" },
             new() { Text = "Удалить", Icon = "delete", Value = "remove" }
         }, OnMenuItemClick);
-        StateHasChanged();
     }
 
     private async void OnMenuItemClick(MenuItemEventArgs args)
@@ -320,7 +317,6 @@ TItem="Currency" AllowSorting="true" CellContextMenu="@OnCellContextMenu">
                         Detail = $"Теперь курсы показаны относительно {baseCurrency}",
                         Duration = 4000
                     });
-                StateHasChanged();
                 break;
 
             case "remove":
@@ -332,7 +328,6 @@ TItem="Currency" AllowSorting="true" CellContextMenu="@OnCellContextMenu">
                 }
                 currencies.Remove(selectedCurrency);
                 grid.Reload();
-                StateHasChanged();
                 break;
         }
     }

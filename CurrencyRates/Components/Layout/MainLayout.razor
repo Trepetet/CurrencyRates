@@ -1,4 +1,7 @@
-﻿@inherits LayoutComponentBase
+﻿@using CurrencyRates.Components.Elements
+
+@inherits LayoutComponentBase
+@inject CookieThemeService CookieThemeService
 
 <div class="page">
     <div class="sidebar">
@@ -7,6 +10,7 @@
 
     <main>
         <div class="top-row px-4">
+            <ThemeToggle/>
             <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
         </div>
 

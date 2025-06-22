@@ -7,7 +7,7 @@
 @rendermode InteractiveServer
 <PageTitle>Настройки</PageTitle>
 
-<h3>Настройки</h3>
+<RadzenText TextStyle="TextStyle.H2">Настройки</RadzenText>
 
 <RadzenText TextStyle="TextStyle.Subtitle1" TagName="TagName.H3">Токен для доступа к курсу валют</RadzenText>
 <RadzenTextBox @bind-Value="@tokenValue" Placeholder="Введите свой токен" Style="width: 300px" aria-label="TextBox with placeholder" />
@@ -23,7 +23,7 @@
     private void ShowNotify(NotificationMessage message)
     {
         NotificationService.Notify(message);
-        StateHasChanged();
+
     }
 
     protected override void OnInitialized()

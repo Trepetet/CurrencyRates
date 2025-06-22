@@ -12,10 +12,11 @@
 
     <link rel="stylesheet" href="_content/Radzen.Blazor/css/default-base.css" />
     <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
+    <RadzenTheme Theme="material" @rendermode="InteractiveServer" />
     <HeadOutlet />
 </head>
 
-<body>
+<body class="rz-layout">
     <Routes />
     <script src="_framework/blazor.web.js"></script>
     <script>
@@ -35,3 +36,26 @@
 </body>
 
 </html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; }
+
+    [Inject]
+    private ThemeService ThemeService { get; set; }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+
+        if (HttpContext != null)
+        {
+            var theme = HttpContext.Request.Cookies["MyApplicationTheme"];
+
+            if (!string.IsNullOrEmpty(theme))
+            {
+                ThemeService.SetTheme(theme);
+            }
+        }
+    }
+}

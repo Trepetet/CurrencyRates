@@ -10,6 +10,11 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddScoped<CurrencyManagementService>();
 builder.Services.AddRadzenComponents();
+builder.Services.AddRadzenCookieThemeService(options =>
+{
+    options.Name = "MyApplicationTheme"; // The name of the cookie
+    options.Duration = TimeSpan.FromDays(365); // The duration of the cookie
+});
 
 var app = builder.Build();
 
